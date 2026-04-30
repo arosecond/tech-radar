@@ -102,11 +102,14 @@ def _build_database_schema(profile: dict[str, Any]) -> dict[str, Any]:
         "Relevance": {"select": {"options": RELEVANCE_OPTIONS}},
         "Run date": {"date": {}},
         "arXiv ID": {"rich_text": {}},
+        "Notable": {"checkbox": {}},
+        "Affiliations": {"multi_select": {"options": []}},
     }
 
 
 def _properties_for(article: TaggedArticle, run_date: str) -> dict[str, Any]:
     td = article.summary.technical_details
+    aff = article.affiliations
     return {
         "Title": {"title": _rt(article.title)},
         "URL": {"url": str(article.url)},
@@ -125,6 +128,8 @@ def _properties_for(article: TaggedArticle, run_date: str) -> dict[str, Any]:
         "Relevance": {"select": _select(article.decision.relevance_hint)},
         "Run date": {"date": {"start": run_date}},
         "arXiv ID": {"rich_text": _rt(article.id)},
+        "Notable": {"checkbox": bool(aff.notable_matches)},
+        "Affiliations": {"multi_select": _multi_select(aff.institutions)},
     }
 
 
@@ -172,6 +177,14 @@ def _build_page_blocks(article: TaggedArticle) -> list[dict[str, Any]]:
     blocks.append(_bullet(f"GitHub: {code_str}"))
     blocks.append(_bullet(f"License: {license_str}"))
 
+    aff = article.affiliations
+    if aff.institutions:
+        blocks.append(_heading("Affiliations"))
+        notable_set = set(aff.notable_matches)
+        for inst in aff.institutions:
+            prefix = "🌟 " if inst in notable_set else ""
+            blocks.append(_bullet(f"{prefix}{inst}"))
+
     return blocks
 
 
@@ -197,6 +210,10 @@ class NotionPublisher:
         self.parent_page_id = parent_page_id
         self.profile = profile or {}
         self._last_call_at: float = 0.0
+        # Populated from the data source after ensure_database; used to filter
+        # property writes so older DBs (missing recently-added columns) keep
+        # accepting upserts instead of returning 400 for the whole row.
+        self._known_properties: set[str] = set()
 
     # ---- internal ---------------------------------------------------------
 
@@ -211,7 +228,8 @@ class NotionPublisher:
     def ensure_database(self, profile_name: str) -> str:
         """Return the database id, creating one under parent_page_id if missing.
 
-        Side effect: also resolves and caches self.data_source_id.
+        Side effect: also resolves and caches self.data_source_id and the set of
+        known property names.
         """
         if self.database_id:
             self._throttle()
@@ -222,6 +240,7 @@ class NotionPublisher:
                     f"Notion DB {self.database_id} has no data sources"
                 )
             self.data_source_id = data_sources[0]["id"]
+            self._known_properties = self._fetch_known_properties()
             return self.database_id
 
         if not self.parent_page_id:
@@ -248,7 +267,40 @@ class NotionPublisher:
             title, new_id, self.data_source_id,
         )
         self.database_id = new_id
+        self._known_properties = self._fetch_known_properties()
         return new_id
+
+    def _fetch_known_properties(self) -> set[str]:
+        """Return the property names defined on the data source.
+
+        Empty set on failure → caller falls back to sending every property
+        (legacy behavior); otherwise we filter writes so older DBs that pre-date
+        recently-added columns still accept upserts.
+        """
+        if not self.data_source_id:
+            return set()
+        self._throttle()
+        try:
+            ds = self.client.request(
+                path=f"data_sources/{self.data_source_id}",
+                method="GET",
+            )
+            return set((ds.get("properties") or {}).keys())
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                "Notion: could not read data source schema (%s); writes will send all properties",
+                e,
+            )
+            return set()
+
+    def _filter_props(self, props: dict[str, Any]) -> dict[str, Any]:
+        if not self._known_properties:
+            return props
+        filtered = {k: v for k, v in props.items() if k in self._known_properties}
+        missing = set(props) - self._known_properties
+        if missing:
+            logger.debug("Notion: dropping unknown properties %s", sorted(missing))
+        return filtered
 
     # ---- page upsert ------------------------------------------------------
 
@@ -261,7 +313,7 @@ class NotionPublisher:
         try:
             result = self.client.pages.create(
                 parent={"type": "data_source_id", "data_source_id": self.data_source_id},
-                properties=_properties_for(article, run_date),
+                properties=self._filter_props(_properties_for(article, run_date)),
                 children=_build_page_blocks(article),
             )
             return result["id"]
@@ -278,7 +330,7 @@ class NotionPublisher:
         try:
             self.client.pages.update(
                 page_id=page_id,
-                properties=_properties_for(article, run_date),
+                properties=self._filter_props(_properties_for(article, run_date)),
             )
             return True
         except APIResponseError as e:

@@ -48,7 +48,8 @@ def notify_success(
     title_lines: list[str] = []
     for a in new_articles[:_MAX_TITLES]:
         title = a.title.replace("\n", " ").strip()
-        title_lines.append(f"• <{a.url}|{title}>")
+        marker = "🌟 " if a.affiliations.notable_matches else ""
+        title_lines.append(f"• {marker}<{a.url}|{title}>")
     if len(new_articles) > _MAX_TITLES:
         title_lines.append(f"• ... and {len(new_articles) - _MAX_TITLES} more")
 

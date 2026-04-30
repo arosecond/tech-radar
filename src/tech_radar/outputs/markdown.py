@@ -28,7 +28,8 @@ def render_digest(articles: list[TaggedArticle], profile_name: str, today: date 
         lines.append(f"## {source_name}")
         lines.append("")
         for a in by_source[source_name]:
-            lines.append(f"### [{a.title}]({a.url})")
+            star = " 🌟" if a.affiliations.notable_matches else ""
+            lines.append(f"### [{a.title}]({a.url}){star}")
             lines.append("")
             authors = ", ".join(a.authors[:3]) + (" et al." if len(a.authors) > 3 else "")
             if authors:
@@ -60,6 +61,14 @@ def render_digest(articles: list[TaggedArticle], profile_name: str, today: date 
             lines.append(f"- GitHub: {code_str}")
             lines.append(f"- License: {_fmt_optional(a.tags.license)}")
             lines.append("")
+
+            if a.affiliations.institutions:
+                notable_set = set(a.affiliations.notable_matches)
+                lines.append("**Affiliations:**")
+                for inst in a.affiliations.institutions:
+                    prefix = "🌟 " if inst in notable_set else ""
+                    lines.append(f"- {prefix}{inst}")
+                lines.append("")
 
             tag_str = " · ".join(f"`{t}`" for t in a.tags.topics)
             extras = [f"type: {a.tags.method_type}"]
