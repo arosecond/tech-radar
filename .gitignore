@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+wheels/
+
+# Virtual environments
+.venv/
+venv/
+
+# Environment / Secrets
+.env
+.env.local
+*.key
+credentials*.json
+
+# Data / Outputs
+data/*.db
+data/*.duckdb
+data/logs/
+output/*.md
+output/*.json
+!output/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Cache
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# uv
+# uv.lock is intentionally tracked for reproducible installs.

@@ -1,0 +1,111 @@
+# Interest profile for the curator
+# Topic: 3D Reconstruction
+#
+# weight: 1.0 = core interest, 0.5 = adjacent, 0.2 = peripheral
+# The Filter agent uses these to decide what survives the first cut.
+# The Ranker agent uses these to score & sort surviving items.
+
+# Language used for summarizer/ranker free-text output (tldr, key_points, novelty,
+# why_it_matters, rationale). Tag labels and JSON field names stay English regardless.
+# Accepts: english | japanese
+output_language: japanese
+
+profile_name: "3D Reconstruction"
+description: |
+  Neural / classical 3D reconstruction from images and video.
+  Core: NeRF, 3D Gaussian Splatting, MVS, SfM, depth estimation, mesh recovery.
+  Adjacent: differentiable rendering, neural rendering, novel view synthesis.
+
+core_topics:
+  - name: "3D Gaussian Splatting"
+    aliases: ["3DGS", "Gaussian Splatting", "splatting"]
+    weight: 1.0
+  - name: "4D Gaussian Splatting"
+    aliases: ["4DGS", "dynamic Gaussian", "deformable Gaussian", "spacetime Gaussian", "time-varying Gaussian", "monocular 4DGS", "video 4DGS"]
+    weight: 1.0
+  - name: "Video-based 3D/4D Reconstruction"
+    aliases:
+      - "video-to-3D"
+      - "video-to-4D"
+      - "video reconstruction"
+      - "monocular video"
+      - "video depth"
+      - "casual video"
+      - "Stable Video 3D"
+      - "SV3D"
+      - "Stable Video 4D"
+      - "SV4D"
+      - "CAT3D"
+      - "CAT4D"
+      - "Shape of Motion"
+      - "ReconX"
+      - "ReconFusion"
+      - "online reconstruction"
+      - "streaming reconstruction"
+      - "DROID-SLAM"
+      - "video diffusion 3D"
+    weight: 1.0
+  - name: "Neural Radiance Fields"
+    aliases: ["NeRF", "neural radiance field", "instant-ngp"]
+    weight: 1.0
+  - name: "Dynamic Scene Reconstruction"
+    aliases: ["dynamic NeRF", "deformable NeRF", "4D reconstruction", "spacetime reconstruction", "non-rigid reconstruction"]
+    weight: 0.9
+  - name: "Feed-forward 3D Reconstruction"
+    aliases: ["DUSt3R", "MASt3R", "VGGT", "feed-forward Gaussian", "pixelSplat", "MVSplat", "LGM", "GS-LRM", "feed forward 3D", "feedforward 3D"]
+    weight: 1.0
+  - name: "Camera Pose Estimation"
+    aliases: ["camera pose", "visual odometry", "relative pose", "absolute pose", "pose regression", "SfM-free", "COLMAP-free", "BA-free"]
+    weight: 0.9
+  - name: "Multi-View Stereo"
+    aliases: ["MVS", "multi-view stereo", "PatchMatch"]
+    weight: 0.9
+  - name: "Structure from Motion"
+    aliases: ["SfM", "structure-from-motion", "COLMAP"]
+    weight: 0.9
+  - name: "Depth Estimation"
+    aliases: ["monocular depth", "stereo depth", "MiDaS", "Depth Anything", "feed-forward depth", "metric depth"]
+    weight: 0.9
+  - name: "Mesh Reconstruction"
+    aliases: ["mesh recovery", "marching cubes", "Poisson reconstruction"]
+    weight: 0.8
+
+adjacent_topics:
+  - name: "Differentiable Rendering"
+    weight: 0.6
+  - name: "Novel View Synthesis"
+    weight: 0.7
+  - name: "Implicit Neural Representations"
+    aliases: ["INR", "SDF", "occupancy network"]
+    weight: 0.6
+  - name: "Point Cloud Processing"
+    weight: 0.5
+  - name: "Photogrammetry"
+    weight: 0.7
+  - name: "SLAM"
+    aliases: ["visual SLAM", "neural SLAM"]
+    weight: 0.5
+
+peripheral_topics:
+  - name: "Diffusion Models for 3D"
+    aliases: ["3D diffusion", "score distillation", "DreamFusion"]
+    weight: 0.4
+  - name: "Generative 3D"
+    aliases: ["text-to-3D", "image-to-3D"]
+    weight: 0.4
+  - name: "Computer Graphics"
+    weight: 0.3
+
+# Items that match these are downweighted heavily (don't outright drop, just deprioritize)
+deprioritize:
+  - "pure 2D image classification"
+  - "tabular ML"
+  - "NLP without vision component"
+  - "RL without 3D"
+
+# Personal context shown to Ranker for tie-breaking
+reader_context: |
+  Reader is an engineer with practical interest in 3D reconstruction.
+  Prefers: papers with code, real-world datasets, methods runnable on a single GPU,
+  comparisons against NeRF/3DGS baselines, and engineering writeups over pure theory.
+  Less interested in: incremental tweaks without benchmarks, non-reproducible work.

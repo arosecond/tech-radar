@@ -1,0 +1,37 @@
+[project]
+name = "tech-radar"
+version = "0.1.0"
+description = "Multi-agent tech curation pipeline: arXiv + Hugging Face + blogs → ranked daily digest"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "openai>=1.55.0",
+    "arxiv>=2.1.3",
+    "feedparser>=6.0.11",
+    "httpx>=0.27.0",
+    "pydantic>=2.9.0",
+    "pyyaml>=6.0.2",
+    "duckdb>=1.1.0",
+    "typer>=0.13.0",
+    "rich>=13.9.0",
+    "python-dotenv>=1.0.1",
+    "tenacity>=9.0.0",
+    "notion-client>=2.2.1",
+]
+
+[project.scripts]
+tech-radar = "tech_radar.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tech_radar"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.7.0",
+]

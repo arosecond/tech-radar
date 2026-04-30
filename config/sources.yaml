@@ -1,0 +1,114 @@
+# Data sources for tech-radar
+# Each source has a type and source-specific config.
+
+arxiv:
+  enabled: true
+  # Categories scanned daily.
+  # cs.CV = Computer Vision (covers most 3D reconstruction)
+  # cs.GR = Graphics (NeRF/3DGS often cross-listed here)
+  # cs.RO = Robotics (SLAM, depth)
+  categories:
+    - cs.CV
+    - cs.GR
+  max_results_per_category: 50
+  # Pre-filter on arXiv side using keyword OR-match to cut LLM cost.
+  # Keep this loose — the Filter agent does the real screening.
+  keyword_prefilter:
+    - "gaussian splatting"
+    - "splatting"
+    - "NeRF"
+    - "neural radiance"
+    - "novel view synthesis"
+    - "3D reconstruction"
+    - "multi-view"
+    - "depth estimation"
+    - "monocular depth"
+    - "metric depth"
+    - "SfM"
+    - "structure-from-motion"
+    - "mesh"
+    - "point cloud"
+    - "SLAM"
+    - "differentiable render"
+    - "implicit representation"
+    - "signed distance"
+    # 4D / dynamic
+    - "4D Gaussian"
+    - "4DGS"
+    - "dynamic Gaussian"
+    - "deformable Gaussian"
+    - "spacetime"
+    - "dynamic NeRF"
+    - "deformable NeRF"
+    - "4D reconstruction"
+    - "non-rigid"
+    # camera pose / SfM-free
+    - "camera pose"
+    - "visual odometry"
+    - "pose regression"
+    - "SfM-free"
+    - "COLMAP-free"
+    # feed-forward 3D
+    - "feed-forward"
+    - "feedforward"
+    - "DUSt3R"
+    - "MASt3R"
+    - "VGGT"
+    - "pixelSplat"
+    - "MVSplat"
+    - "LGM"
+    - "GS-LRM"
+    # video-input 3D/4D reconstruction
+    - "video-to-3D"
+    - "video-to-4D"
+    - "video reconstruction"
+    - "monocular video"
+    - "casual video"
+    - "video depth"
+    - "SV3D"
+    - "SV4D"
+    - "Stable Video"
+    - "CAT3D"
+    - "CAT4D"
+    - "Shape of Motion"
+    - "ReconX"
+    - "ReconFusion"
+    - "online reconstruction"
+    - "streaming reconstruction"
+    - "DROID-SLAM"
+    - "video diffusion"
+
+huggingface:
+  enabled: true
+  # HF Daily Papers feed + topic-tagged repos.
+  # We use the MCP tools (paper_search, hub_repo_search) at runtime.
+  paper_queries:
+    - "3D reconstruction"
+    - "gaussian splatting"
+    - "NeRF"
+    - "depth estimation"
+  repo_tags:
+    - "image-to-3d"
+    - "depth-estimation"
+  max_results_per_query: 20
+
+rss:
+  enabled: true
+  feeds:
+    - name: "Anthropic"
+      url: "https://www.anthropic.com/news/rss.xml"
+      weight: 0.3   # rarely 3D-related, but high-signal when relevant
+    - name: "Two Minute Papers"
+      url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCbfYPyITQ-7l4upoX8nvctg"
+      weight: 0.7
+    - name: "Radiance Fields"
+      url: "https://radiancefields.com/feed/"
+      weight: 1.0
+    - name: "Hugging Face Blog"
+      url: "https://huggingface.co/blog/feed.xml"
+      weight: 0.5
+    - name: "Sebastian Raschka"
+      url: "https://magazine.sebastianraschka.com/feed"
+      weight: 0.3
+  # Look back N days when fetching feeds.
+  lookback_days: 7

@@ -1,0 +1,39 @@
+# Stage → (provider, model) routing.
+#
+# Providers:
+#   mori   = local Qwen 3.6-27B via llama.cpp (free, runs on local GPU)
+#   gemini = Gemini 2.x Flash via Google AI Studio (free tier; daily quota varies
+#            by project — see README; currently NOT used by default routing)
+#
+# Current routing rationale: all stages on local mori for $0 cost AND no quota
+# ceiling (was hybrid mori+gemini until the gemini free-tier daily limit on
+# this project turned out to be only 20 req/day — too tight for batch use).
+#
+# The architecture is still multi-provider: flip any `provider:` to `gemini`
+# below to re-route that stage. `tech-radar show-models` prints the active map.
+
+filter:
+  provider: mori
+  model: mori           # llama.cpp `--alias`
+  max_tokens: 800
+  temperature: 0.1
+
+summarizer:
+  provider: mori
+  model: mori
+  max_tokens: 4500      # thinking eats budget; raised from 2500 to keep JSON output safe
+  temperature: 0.3
+  enable_thinking: true # promoted from A/B (2026-04-29): thinking captures paper details
+                        # (formulas, exact benchmark names) more faithfully on the same backend
+
+tagger:
+  provider: mori
+  model: mori
+  max_tokens: 800
+  temperature: 0.1
+
+ranker:
+  provider: mori
+  model: mori
+  max_tokens: 1500
+  temperature: 0.2
