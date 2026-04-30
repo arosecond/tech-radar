@@ -19,7 +19,7 @@ from tech_radar.agents._client import ModelSpec
 from tech_radar.agents.filter_agent import filter_articles
 from tech_radar.agents.summarizer import summarize_articles
 from tech_radar.agents.tagger import tag_articles
-from tech_radar.enrich import enrich_articles
+from tech_radar.enrich import enrich_affiliations, enrich_articles
 from tech_radar.outputs.markdown import render_digest, write_digest
 from tech_radar.outputs.notion import NotionPublisher
 from tech_radar.schemas import Article, TaggedArticle
@@ -128,6 +128,15 @@ def fetch_all(sources_config: dict[str, Any], lookback_days: int) -> list[Articl
     return articles
 
 
+def _load_notable_patterns(path: Path) -> list[str]:
+    """Read config/notable_institutions.yaml. Missing file → empty list (feature disabled)."""
+    if not path.exists():
+        logger.info("notable_institutions.yaml not found at %s; skipping affiliation marker", path)
+        return []
+    cfg = load_yaml(path)
+    return list(cfg.get("notable", []))
+
+
 def run_pipeline(
     profile_path: Path,
     sources_path: Path,
@@ -139,10 +148,14 @@ def run_pipeline(
     digest_suffix: str = "",
     dry_run: bool = False,
     notion_enabled: bool = True,
+    notable_path: Path | None = None,
 ) -> dict[str, Any]:
     profile = load_yaml(profile_path)
     sources = load_yaml(sources_path)
     models = load_yaml(models_path)
+    notable_patterns = _load_notable_patterns(
+        notable_path or (profile_path.parent / "notable_institutions.yaml")
+    )
 
     filter_spec, filter_kwargs = _resolve_stage(models, "filter")
     summarizer_spec, summarizer_kwargs = _resolve_stage(models, "summarizer")
@@ -172,6 +185,10 @@ def run_pipeline(
 
         logger.info("Enriching %d articles (URL discovery + license)...", len(tagged))
         tagged = enrich_articles(tagged)
+
+        if notable_patterns:
+            logger.info("Looking up author affiliations for %d articles...", len(tagged))
+            tagged = enrich_affiliations(tagged, notable_patterns)
 
         if not dry_run:
             # Only mark articles seen if they made it all the way through. Anything dropped

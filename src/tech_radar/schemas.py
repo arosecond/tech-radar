@@ -104,8 +104,27 @@ class Tags(BaseModel):
     license: str | None = None
 
 
+class Affiliations(BaseModel):
+    """Author affiliations enriched from OpenAlex post-tagging.
+
+    Empty `institutions` either means OpenAlex had no data (typical for very
+    recent arXiv-only papers) or enrichment hasn't run yet — the digest just
+    omits the marker in either case.
+    """
+
+    institutions: list[str] = Field(
+        default_factory=list,
+        description="Unique institution display names returned by OpenAlex authorships",
+    )
+    notable_matches: list[str] = Field(
+        default_factory=list,
+        description="Subset of `institutions` that matched a pattern in notable_institutions.yaml",
+    )
+
+
 class TaggedArticle(SummarizedArticle):
     tags: Tags
+    affiliations: Affiliations = Field(default_factory=Affiliations)
 
 
 class RankScore(BaseModel):

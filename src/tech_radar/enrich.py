@@ -1,6 +1,14 @@
 """Post-tagging enrichment.
 
-Three steps per article:
+Two enrich passes run after tagging:
+
+  enrich_articles(...)        Code URL discovery + SPDX license (GitHub API)
+  enrich_affiliations(...)    Author institutions via OpenAlex
+
+Both pass through the article list and mutate fields in place. They're
+separated so each can be skipped, rate-limit-bailed, or retried independently.
+
+Within `enrich_articles`:
   1. arXiv scrape: fetch the abstract page and extract any GitHub link.
   2. GitHub search: if arXiv scrape found nothing, search GitHub by title
      keywords, filtered to repos created on-or-after the paper's publication
@@ -8,19 +16,17 @@ Three steps per article:
   3. License lookup: once code_url is known, call the GitHub API for the
      SPDX licence identifier.
 
-Steps 1-2 run for ALL articles that lack a code_url, regardless of whether
-the tagger set has_code — papers sometimes publish code without mentioning
-it in the abstract.
-
 Rate limits (unauthenticated):
-  - GitHub REST API:  60 req/hr
-  - GitHub Search API: 10 req/min
-Both are tracked separately and bail gracefully when hit.
+  - GitHub REST API:    60 req/hr
+  - GitHub Search API:  10 req/min
+  - OpenAlex polite:   ~100k req/day with mailto in User-Agent
+All three are tracked separately and bail gracefully when hit.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 import re
 import time
 from datetime import datetime
@@ -29,7 +35,7 @@ from typing import Iterable
 import httpx
 from pydantic import HttpUrl, TypeAdapter
 
-from tech_radar.schemas import TaggedArticle
+from tech_radar.schemas import Affiliations, TaggedArticle
 
 _http_url_ta: TypeAdapter[HttpUrl] = TypeAdapter(HttpUrl)
 
@@ -258,5 +264,118 @@ def enrich_articles(
     logger.info(
         "Enrich: %d/%d with code URL, %d/%d with license",
         n_url, len(enriched), n_lic, len(enriched),
+    )
+    return enriched
+
+
+# ---------------------------------------------------------------------------
+# OpenAlex affiliation enrichment
+# ---------------------------------------------------------------------------
+
+# OpenAlex asks API consumers to identify themselves; doing so puts requests
+# in the "polite pool" with much higher per-day quota. Set OPENALEX_MAILTO
+# to a contact email to opt in.
+_OPENALEX_BASE = "https://api.openalex.org"
+
+
+def _openalex_user_agent() -> str:
+    mailto = os.getenv("OPENALEX_MAILTO", "").strip()
+    repo = "https://github.com/arosecond/tech-radar"
+    if mailto:
+        return f"tech-radar/0.1 ({repo}; mailto:{mailto})"
+    return f"tech-radar/0.1 ({repo})"
+
+
+def _fetch_openalex_institutions(
+    client: httpx.Client,
+    arxiv_id: str,
+) -> list[str] | None:
+    """Return institution display names from OpenAlex authorships, or None on transport error.
+
+    An empty list (vs None) means the API responded but had no affiliation
+    data — common for arXiv-only / pre-conference papers.
+    """
+    try:
+        r = client.get(
+            f"{_OPENALEX_BASE}/works/doi:10.48550/arXiv.{arxiv_id}",
+            timeout=10.0,
+        )
+    except httpx.HTTPError as exc:
+        logger.debug("OpenAlex fetch failed for %s: %s", arxiv_id, exc)
+        return None
+
+    if r.status_code == 404:
+        return []
+    if r.status_code == 429:
+        logger.warning("OpenAlex rate-limited; skipping remaining lookups")
+        raise RuntimeError("openalex_rate_limit")
+    if r.status_code != 200:
+        logger.debug("OpenAlex %s for %s", r.status_code, arxiv_id)
+        return []
+
+    institutions: list[str] = []
+    for authorship in r.json().get("authorships", []):
+        for inst in authorship.get("institutions", []):
+            name = inst.get("display_name")
+            if name:
+                institutions.append(name)
+    return institutions
+
+
+def _match_notable(institutions: list[str], notable_lower: list[str]) -> list[str]:
+    """Return institutions whose name contains any notable pattern (case-insensitive). Dedup, preserve order."""
+    seen: set[str] = set()
+    matches: list[str] = []
+    for inst in institutions:
+        if inst in seen:
+            continue
+        if any(pat in inst.lower() for pat in notable_lower):
+            matches.append(inst)
+            seen.add(inst)
+    return matches
+
+
+def enrich_affiliations(
+    articles: Iterable[TaggedArticle],
+    notable_patterns: Iterable[str],
+    *,
+    delay: float = 0.5,
+) -> list[TaggedArticle]:
+    """Enrich articles with author institutions and a notable-match flag.
+
+    Mutates articles in place. arXiv-sourced articles only — other sources are
+    passed through untouched. Empty results are stored as empty `Affiliations`
+    rather than failing.
+    """
+    notable_lower = [p.lower() for p in notable_patterns]
+    enriched: list[TaggedArticle] = []
+    rate_limited = False
+
+    headers = {"User-Agent": _openalex_user_agent(), "Accept": "application/json"}
+    with httpx.Client(headers=headers) as client:
+        for article in articles:
+            if article.source.value == "arxiv" and not rate_limited:
+                arxiv_id = article.id.removeprefix("arxiv:")
+                try:
+                    institutions = _fetch_openalex_institutions(client, arxiv_id)
+                except RuntimeError:
+                    rate_limited = True
+                    institutions = None
+
+                if institutions:
+                    unique = list(dict.fromkeys(institutions))  # dedup, preserve order
+                    article.affiliations = Affiliations(
+                        institutions=unique,
+                        notable_matches=_match_notable(unique, notable_lower),
+                    )
+                time.sleep(delay)
+
+            enriched.append(article)
+
+    n_inst = sum(1 for a in enriched if a.affiliations.institutions)
+    n_notable = sum(1 for a in enriched if a.affiliations.notable_matches)
+    logger.info(
+        "Affiliations: %d/%d with institution data, %d/%d with notable match",
+        n_inst, len(enriched), n_notable, len(enriched),
     )
     return enriched

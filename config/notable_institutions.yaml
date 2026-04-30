@@ -1,0 +1,97 @@
+# Patterns matched case-insensitively against OpenAlex institution display names
+# (substring match — `Stanford` matches `Stanford University`, `Stanford School of Medicine`, etc).
+#
+# When *any* author of a paper has at least one institution matching the patterns
+# below, the paper gets a 🌟 marker in the digest, Notion DB, and Slack notification.
+#
+# Coverage is intentionally biased toward groups that publish heavily in
+# 3D / vision / generative ML — adjust to taste, this is just config.
+
+notable:
+  # ---- US academia ----
+  - Stanford
+  - Massachusetts Institute of Technology
+  - MIT
+  - Carnegie Mellon
+  - Princeton University
+  - Harvard
+  - California Institute of Technology
+  - University of California, Berkeley
+  - University of California, San Diego
+  - University of California, Los Angeles
+  - University of Washington
+  - University of Texas at Austin
+  - Cornell University
+  - Columbia University
+  - University of Pennsylvania
+  - University of Michigan
+  - Georgia Institute of Technology
+  - University of Illinois Urbana-Champaign
+  - University of Maryland
+
+  # ---- US industry research ----
+  - Google
+  - Google DeepMind
+  - DeepMind
+  - Google Research
+  - Meta
+  - Meta AI
+  - Facebook
+  - FAIR
+  - Microsoft
+  - Microsoft Research
+  - Apple
+  - NVIDIA
+  - OpenAI
+  - Anthropic
+  - Adobe
+  - Adobe Research
+  - Amazon
+  - Snap
+  - IBM Research
+
+  # ---- European academia ----
+  - ETH Zurich
+  - EPFL
+  - Oxford
+  - University of Cambridge
+  - Imperial College London
+  - University College London
+  - UCL
+  - Max Planck
+  - Inria
+  - Technical University of Munich
+  - TU Munich
+  - KU Leuven
+  - University of Edinburgh
+
+  # ---- European industry research ----
+  - Naver Labs
+  - Naver Labs Europe
+
+  # ---- Asia ----
+  - Tsinghua University
+  - Peking University
+  - Shanghai Jiao Tong
+  - Fudan University
+  - Zhejiang University
+  - University of Science and Technology of China
+  - National University of Singapore
+  - Nanyang Technological University
+  - University of Tokyo
+  - Tokyo Institute of Technology
+  - Kyoto University
+  - KAIST
+  - Seoul National University
+  - The Chinese University of Hong Kong
+  - Hong Kong University of Science and Technology
+  - University of Hong Kong
+
+  # ---- Asia industry ----
+  - Tencent
+  - Alibaba
+  - ByteDance
+  - Huawei
+  - Baidu
+  - Sony
+  - Samsung
