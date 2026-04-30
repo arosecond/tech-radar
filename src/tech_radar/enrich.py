@@ -295,9 +295,12 @@ def _fetch_openalex_institutions(
     An empty list (vs None) means the API responded but had no affiliation
     data — common for arXiv-only / pre-conference papers.
     """
+    # OpenAlex registers arXiv works under the versionless DOI (e.g.
+    # 10.48550/arXiv.2604.15941). Versioned DOIs (`...v1`, `...v2`) 404.
+    versionless = re.sub(r"v\d+$", "", arxiv_id)
     try:
         r = client.get(
-            f"{_OPENALEX_BASE}/works/doi:10.48550/arXiv.{arxiv_id}",
+            f"{_OPENALEX_BASE}/works/doi:10.48550/arXiv.{versionless}",
             timeout=10.0,
         )
     except httpx.HTTPError as exc:
