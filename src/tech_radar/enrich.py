@@ -25,16 +25,18 @@ All three are tracked separately and bail gracefully when hit.
 
 from __future__ import annotations
 
+import io
 import logging
 import os
 import re
 import time
 from datetime import datetime
-from typing import Iterable
+from typing import Any, Iterable
 
 import httpx
-from pydantic import HttpUrl, TypeAdapter
+from pydantic import BaseModel, Field, HttpUrl, TypeAdapter
 
+from tech_radar.agents._client import ModelSpec, call_structured
 from tech_radar.schemas import Affiliations, TaggedArticle
 
 _http_url_ta: TypeAdapter[HttpUrl] = TypeAdapter(HttpUrl)
@@ -325,6 +327,104 @@ def _fetch_openalex_institutions(
     return institutions
 
 
+# ---------------------------------------------------------------------------
+# LLM fallback: extract affiliations from the paper's PDF first page
+# ---------------------------------------------------------------------------
+#
+# OpenAlex covers a substantial back-catalogue but has thin or no affiliation
+# data for many arXiv-only / pre-conference papers. We download the PDF, pull
+# the first page's text, and ask the local LLM to extract the institutions
+# directly. The LLM tolerates the typical pdfplumber quirks (no inter-word
+# spaces in narrow columns, "TheUniversityofTokyo") far better than regex.
+
+_ARXIV_PDF_BASE = "https://arxiv.org/pdf"
+_PAGE1_TEXT_CAP = 3000  # characters; affiliations are always in the header block
+
+
+class _AffiliationExtraction(BaseModel):
+    """LLM response shape for the affiliation extraction stage."""
+
+    institutions: list[str] = Field(
+        default_factory=list,
+        description="Unique author affiliations (universities, labs, companies). "
+        "Normalize obvious word-spacing artifacts like 'TheUniversityofTokyo' to "
+        "'The University of Tokyo'. Return [] if no affiliations are visible.",
+    )
+
+
+def _fetch_pdf_page1_text(client: httpx.Client, arxiv_id: str) -> str | None:
+    """Download the arXiv PDF and return text from page 1, or None on any failure.
+
+    Stripped of versioned suffix on the URL because arxiv.org serves the latest
+    version under the bare id and we don't care about pinning here.
+    """
+    versionless = re.sub(r"v\d+$", "", arxiv_id)
+    url = f"{_ARXIV_PDF_BASE}/{versionless}"
+    try:
+        r = client.get(url, timeout=30.0, follow_redirects=True)
+    except httpx.HTTPError as exc:
+        logger.debug("PDF fetch failed for %s: %s", arxiv_id, exc)
+        return None
+    if r.status_code != 200 or not r.content:
+        logger.debug("PDF fetch returned %s for %s", r.status_code, arxiv_id)
+        return None
+
+    try:
+        import pdfplumber  # local import: keeps import cost off the hot path
+        with pdfplumber.open(io.BytesIO(r.content)) as pdf:
+            if not pdf.pages:
+                return None
+            text = pdf.pages[0].extract_text() or ""
+    except Exception as exc:  # noqa: BLE001 — pdfplumber raises a zoo of exceptions
+        logger.debug("PDF parse failed for %s: %s", arxiv_id, exc)
+        return None
+
+    return text[:_PAGE1_TEXT_CAP] if text else None
+
+
+_LLM_SYSTEM = """You extract author affiliations from the first page of a research paper.
+
+Return a flat, deduplicated list of institution names (universities, research \
+labs, companies). Rules:
+- Normalize obvious word-spacing artifacts from PDF extraction
+  (e.g. "TheUniversityofTokyo" -> "The University of Tokyo").
+- Use the canonical full name when both the abbreviation and full form appear.
+- Do NOT include department names, lab names, or country/city alone.
+- Do NOT include author names, emails, conference names, or copyright lines.
+- If no affiliations are visible on the first page, return an empty list."""
+
+
+def _extract_via_llm(
+    page1_text: str,
+    spec: ModelSpec,
+    **call_kwargs: Any,
+) -> list[str]:
+    """Run the LLM-based affiliation extraction on a chunk of page-1 text.
+
+    Returns institutions in document order, deduplicated. Empty list on any
+    LLM failure (caller treats this the same as "no data").
+    """
+    user = (
+        "Extract affiliations from the first-page text below.\n\n"
+        "----- PAGE 1 -----\n"
+        f"{page1_text}\n"
+        "----- END -----\n"
+    )
+    try:
+        result = call_structured(
+            spec=spec,
+            system=_LLM_SYSTEM,
+            user=user,
+            response_model=_AffiliationExtraction,
+            tool_name="affiliations",
+            **call_kwargs,
+        )
+    except Exception as exc:  # noqa: BLE001 — treat any LLM failure as "no data"
+        logger.warning("LLM affiliation extract failed: %s", exc)
+        return []
+    return list(dict.fromkeys(result.institutions))  # dedup, preserve order
+
+
 def _match_notable(institutions: list[str], notable_lower: list[str]) -> list[str]:
     """Return institutions whose name contains any notable pattern (case-insensitive). Dedup, preserve order."""
     seen: set[str] = set()
@@ -343,42 +443,64 @@ def enrich_affiliations(
     notable_patterns: Iterable[str],
     *,
     delay: float = 0.5,
+    llm_spec: ModelSpec | None = None,
+    llm_kwargs: dict[str, Any] | None = None,
 ) -> list[TaggedArticle]:
     """Enrich articles with author institutions and a notable-match flag.
 
     Mutates articles in place. arXiv-sourced articles only — other sources are
     passed through untouched. Empty results are stored as empty `Affiliations`
     rather than failing.
+
+    Lookup strategy per article (when source is arxiv):
+        1. OpenAlex DOI lookup (free, ~instant).
+        2. If OpenAlex returned no institutions AND llm_spec is provided,
+           download the PDF and let the LLM extract affiliations from page 1.
     """
     notable_lower = [p.lower() for p in notable_patterns]
+    llm_kwargs = llm_kwargs or {}
     enriched: list[TaggedArticle] = []
     rate_limited = False
+    llm_calls = 0
 
     headers = {"User-Agent": _openalex_user_agent(), "Accept": "application/json"}
     with httpx.Client(headers=headers) as client:
         for article in articles:
-            if article.source.value == "arxiv" and not rate_limited:
+            # Cache hit (pipeline pre-populated from previous run): skip lookups.
+            if article.affiliations.institutions:
+                enriched.append(article)
+                continue
+            if article.source.value == "arxiv":
                 arxiv_id = article.id.removeprefix("arxiv:")
-                try:
-                    institutions = _fetch_openalex_institutions(client, arxiv_id)
-                except RuntimeError:
-                    rate_limited = True
-                    institutions = None
+                institutions: list[str] | None = None
+
+                if not rate_limited:
+                    try:
+                        institutions = _fetch_openalex_institutions(client, arxiv_id)
+                    except RuntimeError:
+                        rate_limited = True
+                        institutions = None
+                    time.sleep(delay)
+
+                if not institutions and llm_spec is not None:
+                    page1 = _fetch_pdf_page1_text(client, arxiv_id)
+                    if page1:
+                        institutions = _extract_via_llm(page1, llm_spec, **llm_kwargs)
+                        llm_calls += 1
 
                 if institutions:
-                    unique = list(dict.fromkeys(institutions))  # dedup, preserve order
+                    unique = list(dict.fromkeys(institutions))
                     article.affiliations = Affiliations(
                         institutions=unique,
                         notable_matches=_match_notable(unique, notable_lower),
                     )
-                time.sleep(delay)
 
             enriched.append(article)
 
     n_inst = sum(1 for a in enriched if a.affiliations.institutions)
     n_notable = sum(1 for a in enriched if a.affiliations.notable_matches)
     logger.info(
-        "Affiliations: %d/%d with institution data, %d/%d with notable match",
-        n_inst, len(enriched), n_notable, len(enriched),
+        "Affiliations: %d/%d with institution data, %d/%d with notable match (LLM fallback used %d times)",
+        n_inst, len(enriched), n_notable, len(enriched), llm_calls,
     )
     return enriched

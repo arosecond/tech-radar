@@ -37,3 +37,12 @@ ranker:
   model: mori
   max_tokens: 1500
   temperature: 0.2
+
+# LLM fallback for affiliation enrichment when OpenAlex returns empty
+# (common for arXiv-only papers not yet in OpenAlex's affiliation graph).
+# Reads ~3kB of PDF page-1 text and emits a flat institution list.
+affiliation_extractor:
+  provider: mori
+  model: mori
+  max_tokens: 600
+  temperature: 0.1

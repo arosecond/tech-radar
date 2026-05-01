@@ -160,6 +160,10 @@ def run_pipeline(
     filter_spec, filter_kwargs = _resolve_stage(models, "filter")
     summarizer_spec, summarizer_kwargs = _resolve_stage(models, "summarizer")
     tagger_spec, tagger_kwargs = _resolve_stage(models, "tagger")
+    affiliation_spec: ModelSpec | None = None
+    affiliation_kwargs: dict[str, Any] = {}
+    if "affiliation_extractor" in models:
+        affiliation_spec, affiliation_kwargs = _resolve_stage(models, "affiliation_extractor")
 
     logger.info(
         "Routing: filter=%s/%s, summarizer=%s/%s, tagger=%s/%s",
@@ -187,8 +191,21 @@ def run_pipeline(
         tagged = enrich_articles(tagged)
 
         if notable_patterns:
+            cache_hits = 0
+            for article in tagged:
+                cached = store.get_cached_affiliations(article.id)
+                if cached is not None:
+                    article.affiliations = cached
+                    cache_hits += 1
+            if cache_hits:
+                logger.info("Affiliations: %d/%d served from cache", cache_hits, len(tagged))
             logger.info("Looking up author affiliations for %d articles...", len(tagged))
-            tagged = enrich_affiliations(tagged, notable_patterns)
+            tagged = enrich_affiliations(
+                tagged,
+                notable_patterns,
+                llm_spec=affiliation_spec,
+                llm_kwargs=affiliation_kwargs,
+            )
 
         if not dry_run:
             # Only mark articles seen if they made it all the way through. Anything dropped

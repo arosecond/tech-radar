@@ -17,6 +17,7 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "tenacity>=9.0.0",
     "notion-client>=2.2.1",
+    "pdfplumber>=0.11.0",
 ]
 
 [project.scripts]

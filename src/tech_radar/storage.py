@@ -11,7 +11,7 @@ from pathlib import Path
 
 import duckdb
 
-from tech_radar.schemas import Article, TaggedArticle
+from tech_radar.schemas import Affiliations, Article, TaggedArticle
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +144,31 @@ class Store:
             "UPDATE tagged_articles SET notion_page_id = ? WHERE id = ?",
             [page_id, article_id],
         )
+
+    # ------------------------------------------------------------------
+    # affiliations cache (read-through against the existing payload column)
+    # ------------------------------------------------------------------
+
+    def get_cached_affiliations(self, article_id: str) -> Affiliations | None:
+        """Return non-empty cached affiliations for a previously-processed article.
+
+        Pulls the `affiliations` field out of the stored payload. Returns None
+        when the article isn't in the table or its cached institutions list is
+        empty (so callers can re-attempt enrichment instead of locking in a
+        missed lookup).
+        """
+        row = self.conn.execute(
+            "SELECT payload FROM tagged_articles WHERE id = ?", [article_id]
+        ).fetchone()
+        if not row:
+            return None
+        try:
+            article = TaggedArticle.model_validate_json(row[0])
+        except Exception:  # noqa: BLE001 — older payloads may pre-date the field
+            return None
+        if not article.affiliations.institutions:
+            return None
+        return article.affiliations
 
     def list_all_with_notion_status(self) -> list[tuple[TaggedArticle, str | None]]:
         """All tagged articles paired with their notion_page_id (or None)."""
