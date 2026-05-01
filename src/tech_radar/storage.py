@@ -11,7 +11,7 @@ from pathlib import Path
 
 import duckdb
 
-from tech_radar.schemas import Affiliations, Article, TaggedArticle
+from tech_radar.schemas import Affiliations, Article, RankScore, TaggedArticle
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +169,23 @@ class Store:
         if not article.affiliations.institutions:
             return None
         return article.affiliations
+
+    # ------------------------------------------------------------------
+    # rank cache (read-through against the existing payload column)
+    # ------------------------------------------------------------------
+
+    def get_cached_rank(self, article_id: str) -> RankScore | None:
+        """Return cached rank score for an article previously processed by the Ranker."""
+        row = self.conn.execute(
+            "SELECT payload FROM tagged_articles WHERE id = ?", [article_id]
+        ).fetchone()
+        if not row:
+            return None
+        try:
+            article = TaggedArticle.model_validate_json(row[0])
+        except Exception:  # noqa: BLE001 — payload may pre-date the rank field
+            return None
+        return article.rank
 
     def list_all_with_notion_status(self) -> list[tuple[TaggedArticle, str | None]]:
         """All tagged articles paired with their notion_page_id (or None)."""

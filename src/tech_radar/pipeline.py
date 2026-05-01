@@ -17,6 +17,7 @@ import yaml
 
 from tech_radar.agents._client import ModelSpec
 from tech_radar.agents.filter_agent import filter_articles
+from tech_radar.agents.ranker import score_articles
 from tech_radar.agents.summarizer import summarize_articles
 from tech_radar.agents.tagger import tag_articles
 from tech_radar.enrich import enrich_affiliations, enrich_articles
@@ -164,6 +165,10 @@ def run_pipeline(
     affiliation_kwargs: dict[str, Any] = {}
     if "affiliation_extractor" in models:
         affiliation_spec, affiliation_kwargs = _resolve_stage(models, "affiliation_extractor")
+    ranker_spec: ModelSpec | None = None
+    ranker_kwargs: dict[str, Any] = {}
+    if "ranker" in models:
+        ranker_spec, ranker_kwargs = _resolve_stage(models, "ranker")
 
     logger.info(
         "Routing: filter=%s/%s, summarizer=%s/%s, tagger=%s/%s",
@@ -206,6 +211,19 @@ def run_pipeline(
                 llm_spec=affiliation_spec,
                 llm_kwargs=affiliation_kwargs,
             )
+
+        if ranker_spec is not None and tagged:
+            # Pull existing rank back out of cached payloads so re-runs don't re-score.
+            rank_cache_hits = 0
+            for article in tagged:
+                cached = store.get_cached_rank(article.id)
+                if cached is not None:
+                    article.rank = cached
+                    rank_cache_hits += 1
+            if rank_cache_hits:
+                logger.info("Ranker: %d/%d served from cache", rank_cache_hits, len(tagged))
+            logger.info("Ranking %d articles...", len(tagged))
+            tagged = score_articles(tagged, profile, ranker_spec, **ranker_kwargs)
 
         if not dry_run:
             # Only mark articles seen if they made it all the way through. Anything dropped

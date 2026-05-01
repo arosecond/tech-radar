@@ -124,7 +124,7 @@ def _properties_for(article: TaggedArticle, run_date: str) -> dict[str, Any]:
         "Performance": {"rich_text": _rt(td.performance)},
         "Speed": {"rich_text": _rt(td.speed)},
         "GPU": {"rich_text": _rt(td.gpu_requirements)},
-        "Score": {"number": None},  # filled by Phase 2 Ranker
+        "Score": {"number": article.rank.score if article.rank else None},
         "Relevance": {"select": _select(article.decision.relevance_hint)},
         "Run date": {"date": {"start": run_date}},
         "arXiv ID": {"rich_text": _rt(article.id)},
@@ -151,6 +151,10 @@ def _bullet(text: str) -> dict[str, Any]:
 
 def _build_page_blocks(article: TaggedArticle) -> list[dict[str, Any]]:
     blocks: list[dict[str, Any]] = []
+
+    if article.rank:
+        blocks.append(_heading(f"Score {article.rank.score:.2f}"))
+        blocks.append(_para(article.rank.rationale))
 
     blocks.append(_heading("TL;DR"))
     blocks.append(_para(article.summary.tldr))

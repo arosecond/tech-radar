@@ -122,17 +122,16 @@ class Affiliations(BaseModel):
     )
 
 
-class TaggedArticle(SummarizedArticle):
-    tags: Tags
-    affiliations: Affiliations = Field(default_factory=Affiliations)
-
-
 class RankScore(BaseModel):
-    """Output of the Ranker agent (Sonnet)."""
+    """Output of the Ranker agent: per-article interest-fit score."""
 
     score: float = Field(..., ge=0.0, le=1.0)
     rationale: str = Field(..., max_length=200)
 
 
-class RankedArticle(TaggedArticle):
-    rank: RankScore
+class TaggedArticle(SummarizedArticle):
+    tags: Tags
+    affiliations: Affiliations = Field(default_factory=Affiliations)
+    # Populated by the Ranker stage when enabled in models.yaml; older payloads
+    # round-trip through DB with rank=None.
+    rank: RankScore | None = None

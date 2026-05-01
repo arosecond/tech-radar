@@ -45,11 +45,18 @@ def notify_success(
     duration_sec: float,
 ) -> bool:
     """Post a success summary with the list of newly-summarized paper titles."""
+    # Rank-scored items go first (high → low); unscored items follow in source
+    # order. Slack readers should see the most-relevant items at the top.
+    sorted_articles = sorted(
+        new_articles,
+        key=lambda a: -(a.rank.score if a.rank else -1.0),
+    )
     title_lines: list[str] = []
-    for a in new_articles[:_MAX_TITLES]:
+    for a in sorted_articles[:_MAX_TITLES]:
         title = a.title.replace("\n", " ").strip()
         marker = "🌟 " if a.affiliations.notable_matches else ""
-        title_lines.append(f"• {marker}<{a.url}|{title}>")
+        score = f" `{a.rank.score:.2f}`" if a.rank else ""
+        title_lines.append(f"• {marker}<{a.url}|{title}>{score}")
     if len(new_articles) > _MAX_TITLES:
         title_lines.append(f"• ... and {len(new_articles) - _MAX_TITLES} more")
 

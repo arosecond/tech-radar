@@ -24,16 +24,28 @@ def render_digest(articles: list[TaggedArticle], profile_name: str, today: date 
     for a in articles:
         by_source.setdefault(a.source_name, []).append(a)
 
+    # Within each source, rank-scored items go first (high → low), unscored
+    # items fall back to publish-date desc. Mixing the two keeps the digest
+    # usable on the days when the Ranker stage is disabled or partially failed.
+    def _sort_key(a: TaggedArticle) -> tuple:
+        score = a.rank.score if a.rank else -1.0
+        return (-score, -a.published_at.timestamp())
+
     for source_name in sorted(by_source.keys()):
         lines.append(f"## {source_name}")
         lines.append("")
-        for a in by_source[source_name]:
+        for a in sorted(by_source[source_name], key=_sort_key):
             star = " 🌟" if a.affiliations.notable_matches else ""
-            lines.append(f"### [{a.title}]({a.url}){star}")
+            score_badge = f" — `{a.rank.score:.2f}`" if a.rank else ""
+            lines.append(f"### [{a.title}]({a.url}){star}{score_badge}")
             lines.append("")
             authors = ", ".join(a.authors[:3]) + (" et al." if len(a.authors) > 3 else "")
             if authors:
                 lines.append(f"*{authors} — {a.published_at.date().isoformat()}*")
+                lines.append("")
+
+            if a.rank:
+                lines.append(f"**Why this score:** {a.rank.rationale}")
                 lines.append("")
 
             lines.append(f"**TL;DR:** {a.summary.tldr}")
