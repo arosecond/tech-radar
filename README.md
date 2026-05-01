@@ -27,7 +27,7 @@ arXiv（Phase 2 では Hugging Face / 技術ブログも追加予定）をスキ
 
 - **マルチプロバイダ × 単一設定でのルーティング** — `config/models.yaml` で各 stage（Filter / Summarizer / Tagger / Ranker）を provider+model にマップ。同じクライアントコードが任意の OpenAI 互換バックエンドで動く。デフォルトはコスト都合で全ローカル、`provider:` を書き換えれば即クラウドへ。
 - **記事を取りこぼさない構造化出力** — `response_format=json_object` + Pydantic 検証 + 自動リトライ + マークダウンフェンス救出。ローカルモデルからの JSON 破損は復旧されてロストしない。
-- **stage 単位の thinking モード A/B** — `enable_thinking` を YAML で stage 別に指定。比較用に `models-thinking.yaml` を同梱しているので、昇格判断は実測ベース（_Engineering decisions_ 参照）。
+- **stage 単位の thinking モード A/B** — `enable_thinking` を YAML で stage 別に指定。Summarizer は side-by-side 比較で thinking-on を本番昇格（_Engineering decisions_ 参照）。
 - **狭く差し替え可能なソース層** — arXiv → HF → RSS、すべて同じ `Article` スキーマの裏に。
 - **累積ダイジェスト** — 1回の run 失敗で過去出力が消えない設計。`tech-radar render` は LLM を呼ばず DuckDB から digest を再生成（コスト $0）。
 
@@ -72,8 +72,8 @@ RSS feeds   ─┘                  │ keep?
 
 ## プロジェクト状況
 
-- **Phase 1 (このリポジトリ):** arXiv source · Filter / Summarizer / Tagger · DuckDB dedup · Markdown digest · Notion DB output · Slack 通知 · Windows Task Scheduler 日次自動実行 · CLI · multi-provider client
-- **Phase 2:** Hugging Face source · RSS source · Ranker agent · 著者所属機関ハイライト（Semantic Scholar）を digest / Notion / Slack に反映
+- **Phase 1 (このリポジトリ):** arXiv source · Filter / Summarizer / Tagger · DuckDB dedup · Markdown digest · Notion DB output · Slack 通知 · Windows Task Scheduler 日次自動実行 · CLI · multi-provider client · 著者所属機関ハイライト（OpenAlex + LLM PDF フォールバック）
+- **Phase 2:** Hugging Face source · RSS source · Ranker agent
 - **Phase 3:** Raspberry Pi cron デプロイ · Langfuse オブザーバビリティ
 
 ## 運用（Operations）

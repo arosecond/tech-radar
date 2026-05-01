@@ -27,7 +27,7 @@ The point of the project is to demonstrate the building blocks of an LLM curatio
 
 - **Multi-provider, single-config routing** — `config/models.yaml` maps each stage (Filter / Summarizer / Tagger / Ranker) to a provider+model. The same client code works against any OpenAI-compatible backend. Default routing is all-local for cost reasons; flip any `provider:` to re-route a stage to a cloud model.
 - **Structured output that doesn't drop articles** — `response_format=json_object` + Pydantic validation + automatic retry + markdown-fence rescue. JSON failures from the local model are recovered, not lost.
-- **Stage-level thinking-mode A/B** — `enable_thinking` is per-stage in YAML. A sibling `models-thinking.yaml` is included for side-by-side runs, so promotion decisions are based on real comparisons (see _Engineering decisions_ below).
+- **Stage-level thinking-mode A/B** — `enable_thinking` is per-stage in YAML. Summarizer was promoted to thinking-on after a side-by-side comparison (see _Engineering decisions_ below).
 - **Source layer kept narrow and swappable** — arXiv → HF → RSS, all behind the same `Article` schema.
 - **Cumulative digest** — a single failed run never erases past output; `tech-radar render` re-builds the digest from DuckDB without calling any LLM ($0 to regenerate).
 
@@ -72,8 +72,8 @@ A few trade-offs are worth pulling out — the kind of thing a reviewer would wa
 
 ## Project status
 
-- **Phase 1 (this repo):** arXiv source · Filter / Summarizer / Tagger · DuckDB dedup · Markdown digest · Notion DB output · Slack notification · daily Windows Task Scheduler auto-run · CLI · multi-provider client
-- **Phase 2:** Hugging Face source · RSS source · Ranker agent · author-affiliation highlight (Semantic Scholar) for digest / Notion / Slack
+- **Phase 1 (this repo):** arXiv source · Filter / Summarizer / Tagger · DuckDB dedup · Markdown digest · Notion DB output · Slack notification · daily Windows Task Scheduler auto-run · CLI · multi-provider client · author-affiliation highlight (OpenAlex + LLM PDF fallback)
+- **Phase 2:** Hugging Face source · RSS source · Ranker agent
 - **Phase 3:** Raspberry Pi cron deploy · Langfuse observability
 
 ## Operations
