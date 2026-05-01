@@ -6,7 +6,7 @@ code URL has not yet been found (for re-crawling over the following 30 days).
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import duckdb
@@ -126,6 +126,43 @@ class Store:
         rows = self.conn.execute(
             "SELECT payload FROM tagged_articles WHERE processed_at >= ? ORDER BY processed_at DESC",
             [since],
+        ).fetchall()
+        return [TaggedArticle.model_validate_json(row[0]) for row in rows]
+
+    def list_all_tagged(self) -> list[TaggedArticle]:
+        """Every tagged article ever processed, newest first. Used by the master index page."""
+        rows = self.conn.execute(
+            "SELECT payload FROM tagged_articles ORDER BY processed_at DESC"
+        ).fetchall()
+        return [TaggedArticle.model_validate_json(row[0]) for row in rows]
+
+    def list_all_tagged_by_processed_date(self) -> dict[date, list[TaggedArticle]]:
+        """All articles grouped by their processed_at calendar date.
+
+        `processed_at` lives in the table, not the payload, so callers that need
+        to group by run-date can't reconstruct it from list_all_tagged() alone.
+        """
+        rows = self.conn.execute(
+            """
+            SELECT CAST(processed_at AS DATE) AS d, payload
+            FROM tagged_articles
+            ORDER BY processed_at DESC
+            """
+        ).fetchall()
+        grouped: dict[date, list[TaggedArticle]] = {}
+        for d, payload in rows:
+            grouped.setdefault(d, []).append(TaggedArticle.model_validate_json(payload))
+        return grouped
+
+    def list_tagged_on(self, day: date) -> list[TaggedArticle]:
+        """Articles whose processed_at falls on the given calendar date, newest first."""
+        rows = self.conn.execute(
+            """
+            SELECT payload FROM tagged_articles
+            WHERE CAST(processed_at AS DATE) = ?
+            ORDER BY processed_at DESC
+            """,
+            [day],
         ).fetchall()
         return [TaggedArticle.model_validate_json(row[0]) for row in rows]
 

@@ -101,9 +101,10 @@ uv sync
 
 # Configure providers
 cp .env.example .env
-# MORI_BASE_URL defaults to http://localhost:8080/v1 — change only if your llama.cpp lives elsewhere
+# LLM_BASE_URL defaults to http://localhost:8080/v1 (llama.cpp).
+#   For vLLM, point it at the actual port the server listens on (e.g. http://localhost:8000/v1).
 # GEMINI_API_KEY is optional: only needed if you flip a stage to provider: gemini in config/models.yaml
-# NOTION_* and SLACK_WEBHOOK_URL are optional — pipeline runs without them
+# NOTION_* and SLACK_WEBHOOK_URL are optional — pipeline runs without them ("company mode")
 
 # Sanity-check loaded configs
 uv run tech-radar show-profile
@@ -113,9 +114,14 @@ uv run tech-radar show-models
 uv run tech-radar ping
 ```
 
-### Local Qwen requirement
+### Local LLM requirement
 
-The default routing sends every stage to a llama.cpp `server` running Qwen 3.6-27B (or any compatible model) at `MORI_BASE_URL`. A working `docker-compose` for `unsloth/Qwen3.6-27B-GGUF` (UD-Q4_K_XL on a 24GB GPU) is documented separately. If you don't have a local GPU, edit `config/models.yaml` and flip the stages to `provider: gemini` (and set `GEMINI_API_KEY` in `.env`).
+The default routing sends every stage to a local OpenAI-compatible endpoint at `LLM_BASE_URL`. Two backends are validated:
+
+- **llama.cpp `server`** (home rig, default port 8080) — `unsloth/Qwen3-27B-GGUF` (UD-Q4_K_XL) on a 24GB GPU
+- **vLLM `serve`** (company rig, default port 8000) — same hardware and model, 2-3x higher throughput. `enable_thinking` propagates through `chat_template_kwargs` unchanged.
+
+If you don't have a local GPU, edit `config/models.yaml` and flip the stages to `provider: gemini` (and set `GEMINI_API_KEY` in `.env`).
 
 ## Run
 

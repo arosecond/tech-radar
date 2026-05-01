@@ -1,7 +1,13 @@
 """Multi-provider LLM client with structured output via OpenAI-compatible endpoints.
 
 Both backends we use expose an OpenAI-compatible API:
-- "mori":    Local Qwen 3.6-27B served by llama.cpp at MORI_BASE_URL (default: http://localhost:8080/v1)
+- "mori":    Local LLM at LLM_BASE_URL (default: http://localhost:8080/v1).
+             Provider-agnostic: any OpenAI-compatible server works — the home
+             rig runs llama.cpp serving Qwen 3-27B GGUF; the company rig is
+             expected to run vLLM serving the same model (2-3x throughput on
+             the same hardware). The "mori" provider key is the engineering
+             persona name we kept once it stuck — the actual backend behind
+             it is decided by LLM_BASE_URL.
 - "gemini":  Gemini 2.0 Flash via Google's OpenAI-compat endpoint (free tier)
 
 Structured output is achieved cross-provider by:
@@ -51,7 +57,7 @@ class ModelSpec:
 
 _MIN_INTERVAL_S: dict[str, float] = {
     "gemini": 6.5,   # 10 RPM with margin
-    "mori": 0.0,     # local, no quota; llama.cpp's --parallel 1 self-serializes
+    "mori": 0.0,     # local; llama.cpp self-serializes via --parallel 1, vLLM has its own scheduler
 }
 
 _last_call_at: dict[str, float] = {}
@@ -76,13 +82,15 @@ def _throttle(provider: str) -> None:
 @lru_cache(maxsize=4)
 def _client_for(provider: Provider) -> OpenAI:
     if provider == "mori":
-        base_url = os.environ.get("MORI_BASE_URL", "http://localhost:8080/v1")
-        # llama.cpp's default `--parallel 1` returns 503 when another caller (e.g. an
-        # active `claude-mori` chat session) is holding the slot. Retry generously
-        # and give each call plenty of time to finish.
+        base_url = os.environ.get("LLM_BASE_URL", "http://localhost:8080/v1")
+        # llama.cpp's default `--parallel 1` returns 503 when the slot is busy
+        # (e.g. an active interactive chat session sharing the same process).
+        # vLLM does internal queueing, so 5 retries are wasted budget there but
+        # also harmless. Generous timeout because thinking-mode summaries can
+        # take 60-90s on a single 24GB GPU.
         return OpenAI(
             base_url=base_url,
-            api_key="not-used",
+            api_key=os.environ.get("LLM_API_KEY", "not-used"),
             max_retries=5,
             timeout=180.0,
         )

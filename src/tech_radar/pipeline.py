@@ -21,6 +21,7 @@ from tech_radar.agents.ranker import score_articles
 from tech_radar.agents.summarizer import summarize_articles
 from tech_radar.agents.tagger import tag_articles
 from tech_radar.enrich import enrich_affiliations, enrich_articles
+from tech_radar.outputs.html import render_digest_html, write_digest_html, write_index_html
 from tech_radar.outputs.markdown import render_digest, write_digest
 from tech_radar.outputs.notion import NotionPublisher
 from tech_radar.schemas import Article, TaggedArticle
@@ -263,8 +264,25 @@ def run_pipeline(
     digest_md = render_digest(digest_articles, profile_name=profile["profile_name"])
     out_path = write_digest(digest_md, output_dir, suffix=digest_suffix)
     logger.info("Wrote digest: %s", out_path)
+
+    # Per-day HTML archive (only this calendar date's articles) + master index.
+    today_date = date.today()
+    with Store(db_path) as store:
+        per_day_articles = store.list_tagged_on(today_date)
+        articles_by_date = store.list_all_tagged_by_processed_date()
+    total_indexed = sum(len(v) for v in articles_by_date.values())
+    digest_html = render_digest_html(
+        per_day_articles, profile_name=profile["profile_name"], today=today_date
+    )
+    html_path = write_digest_html(digest_html, output_dir, today=today_date, suffix=digest_suffix)
+    index_path = write_index_html(
+        output_dir, profile_name=profile["profile_name"], articles_by_date=articles_by_date
+    )
+    logger.info("Wrote HTML: %s (index: %s, %d total)", html_path, index_path, total_indexed)
     return {
         "digest_path": out_path,
+        "html_path": html_path,
+        "index_path": index_path,
         "new_articles": tagged,
         "digest_articles": digest_articles,
     }

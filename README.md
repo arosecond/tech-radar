@@ -101,9 +101,10 @@ uv sync
 
 # プロバイダ設定
 cp .env.example .env
-# MORI_BASE_URL のデフォルトは http://localhost:8080/v1 — 別の場所で llama.cpp を立てている場合のみ変更
+# LLM_BASE_URL のデフォルトは http://localhost:8080/v1（llama.cpp）
+#   vLLM を使う場合は http://localhost:8000/v1 など、サーバの実待ち受けポートに合わせる
 # GEMINI_API_KEY は任意 — config/models.yaml で provider: gemini に切り替えた stage がある場合のみ必要
-# NOTION_* と SLACK_WEBHOOK_URL も任意 — 未設定でもパイプラインは動く
+# NOTION_* と SLACK_WEBHOOK_URL も任意 — 未設定でもパイプラインは動く（会社モード）
 
 # 設定ロード確認
 uv run tech-radar show-profile
@@ -115,7 +116,12 @@ uv run tech-radar ping
 
 ### ローカル Qwen の前提
 
-デフォルトルーティングは全 stage が `MORI_BASE_URL` 上で動く llama.cpp `server`（Qwen 3.6-27B 互換モデル）に向く。`unsloth/Qwen3.6-27B-GGUF`（24GB GPU で UD-Q4_K_XL）の動作確認済み `docker-compose` は別ドキュメントで管理。ローカル GPU が無い場合は `config/models.yaml` を `provider: gemini` に書き換え、`.env` に `GEMINI_API_KEY` を設定する。
+デフォルトルーティングは全 stage が `LLM_BASE_URL` 上で動くローカル LLM（OpenAI 互換エンドポイント）に向く。検証済みのバックエンドは2つ：
+
+- **llama.cpp `server`**（家用、デフォルトポート 8080） — `unsloth/Qwen3-27B-GGUF` (UD-Q4_K_XL) を 24GB GPU で動作確認済
+- **vLLM `serve`**（会社用、デフォルトポート 8000） — 同じハードウェア・同じモデルで2-3倍のスループット。`enable_thinking` も `chat_template_kwargs` 経由でそのまま通る
+
+ローカル GPU が無い場合は `config/models.yaml` を `provider: gemini` に書き換え、`.env` に `GEMINI_API_KEY` を設定する。
 
 ## 実行
 
