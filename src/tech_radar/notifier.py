@@ -2,6 +2,10 @@
 
 All functions no-op silently if SLACK_WEBHOOK_URL is not set, so the pipeline
 keeps working in environments without Slack configured (CI, local dev).
+
+When SLACK_WEBHOOK_URL is set but the POST fails, a marker file is written
+to the desktop so the operator notices the silent notification gap. The marker
+is auto-deleted on the next successful POST.
 """
 
 from __future__ import annotations
@@ -20,6 +24,36 @@ logger = logging.getLogger(__name__)
 _MAX_TITLES = 20
 _TRACEBACK_LIMIT = 1500
 _ERROR_LIMIT = 500
+_MARKER_NAME = "TECH_RADAR_SLACK_FAILED.txt"
+
+
+def _marker_path() -> Path:
+    return Path.home() / "Desktop" / _MARKER_NAME
+
+
+def _write_marker(error: str) -> None:
+    try:
+        path = _marker_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            "tech-radar Slack通知失敗\n"
+            f"Time: {datetime.now().isoformat(timespec='seconds')}\n"
+            f"Error: {error}\n\n"
+            "対処: .env の SLACK_WEBHOOK_URL を更新してください。\n"
+            "次回のSlack送信が成功するとこのファイルは自動削除されます。\n",
+            encoding="utf-8",
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Marker file write failed: %s", e)
+
+
+def _clear_marker() -> None:
+    try:
+        path = _marker_path()
+        if path.exists():
+            path.unlink()
+    except Exception as e:  # noqa: BLE001
+        logger.debug("Marker file clear failed: %s", e)
 
 
 def _post(blocks: list[dict], fallback_text: str) -> bool:
@@ -31,9 +65,11 @@ def _post(blocks: list[dict], fallback_text: str) -> bool:
     try:
         r = httpx.post(url, json=payload, timeout=10)
         r.raise_for_status()
+        _clear_marker()
         return True
     except Exception as e:  # noqa: BLE001
         logger.warning("Slack notification failed: %s", e)
+        _write_marker(str(e))
         return False
 
 
